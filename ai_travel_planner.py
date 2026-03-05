@@ -4,33 +4,58 @@ from datetime import date
 import pandas as pd
 import folium
 from streamlit_folium import st_folium
+import random
+
+# =========================
+# Realistic Itinerary Generator
+# =========================
+
+def generate_realistic_itinerary(destination, start_date, end_date, budget, preferences, transport):
+    """
+    Simulates a more realistic itinerary with:
+    - Morning/Afternoon/Evening activities
+    - Approximate costs per activity type
+    - Nearby locations clustered
+    """
+    activity_costs = {
+        "Museums": 10,
+        "Nightlife": 20,
+        "Adventure": 30,
+        "Food": 15,
+        "Parks": 5,
+        "Shopping": 25
+    }
+    
+    # Example coordinates (replace with city-specific later)
+    base_lat, base_lon = 28.6139, 77.2090  # Delhi example
+    
+    itinerary = []
+    days = (end_date - start_date).days + 1
+    
+    for day_idx in range(days):
+        day_plan = {"day": f"Day {day_idx+1}", "activities": []}
+        time_slots = ["09:00-12:00", "12:30-15:30", "16:00-19:00", "19:30-22:00"]
+        
+        for slot_idx, pref in enumerate(preferences):
+            if slot_idx >= len(time_slots):
+                break
+            act = {
+                "name": f"{pref} Spot {day_idx+1}",
+                "time": time_slots[slot_idx],
+                "cost": activity_costs.get(pref, 10) + random.randint(0,5),
+                "location": (
+                    base_lat + random.uniform(0,0.02), 
+                    base_lon + random.uniform(0,0.02)
+                ),
+                "rating": round(random.uniform(3.5, 5.0), 1)
+            }
+            day_plan["activities"].append(act)
+        itinerary.append(day_plan)
+    return itinerary
 
 # =========================
 # Helper Functions
 # =========================
-
-def generate_itinerary(destination, start_date, end_date, budget, preferences, transport):
-    """
-    Placeholder AI function to simulate itinerary generation.
-    Replace with OpenAI API call or local LLM integration.
-    """
-    itinerary = []
-    days = (end_date - start_date).days + 1
-    for i in range(days):
-        day_plan = {
-            "day": f"Day {i+1}",
-            "activities": [
-                {
-                    "name": f"{pref} Spot {i+1}",
-                    "time": f"{9+i}:00 AM - {12+i}:00 PM",
-                    "cost": round(budget/days*0.3, 2),
-                    "location": (28.6139 + 0.01*i, 77.2090 + 0.01*i),  # Example lat/lon
-                    "rating": round(3 + i*0.2, 1)
-                } for pref in preferences
-            ]
-        }
-        itinerary.append(day_plan)
-    return itinerary
 
 def display_itinerary(itinerary):
     for day in itinerary:
@@ -44,7 +69,6 @@ def display_itinerary(itinerary):
                 st.markdown("---")
 
 def create_map(itinerary):
-    # Center map on first activity
     start_coords = itinerary[0]["activities"][0]["location"]
     m = folium.Map(location=start_coords, zoom_start=12)
     for day in itinerary:
@@ -57,8 +81,7 @@ def create_map(itinerary):
     return m
 
 def calculate_budget(itinerary):
-    total_cost = sum(act["cost"] for day in itinerary for act in day["activities"])
-    return total_cost
+    return sum(act["cost"] for day in itinerary for act in day["activities"])
 
 # =========================
 # Streamlit UI
@@ -67,7 +90,7 @@ def calculate_budget(itinerary):
 st.set_page_config(page_title="AI Travel Planner for Students", layout="wide")
 
 st.title("🎒 AI Travel Planner for Students")
-st.markdown("Plan budget-friendly trips with AI-generated personalized itineraries!")
+st.markdown("Plan realistic, budget-friendly trips with AI-simulated itineraries!")
 
 # -------------------------
 # Sidebar Inputs
@@ -94,7 +117,9 @@ transport = st.sidebar.selectbox(
 
 generate_btn = st.sidebar.button("Generate Itinerary")
 
-# Initialize session state variables
+# -------------------------
+# Session State Initialization
+# -------------------------
 if "generated" not in st.session_state:
     st.session_state.generated = False
 if "itinerary" not in st.session_state:
@@ -107,8 +132,8 @@ tabs = st.tabs(["Overview", "Daily Plan", "Map View", "Budget Summary"])
 
 # Generate itinerary when button is clicked
 if generate_btn:
-    with st.spinner("Generating your itinerary..."):
-        st.session_state.itinerary = generate_itinerary(destination, start_date, end_date, budget, preferences, transport)
+    with st.spinner("Generating your realistic itinerary..."):
+        st.session_state.itinerary = generate_realistic_itinerary(destination, start_date, end_date, budget, preferences, transport)
         st.session_state.generated = True
 
 # Display itinerary if generated
