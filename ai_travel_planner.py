@@ -1,4 +1,4 @@
-
+# ai_travel_planner.py
 import streamlit as st
 from datetime import date
 import pandas as pd
@@ -94,13 +94,26 @@ transport = st.sidebar.selectbox(
 
 generate_btn = st.sidebar.button("Generate Itinerary")
 
+# Initialize session state variables
+if "generated" not in st.session_state:
+    st.session_state.generated = False
+if "itinerary" not in st.session_state:
+    st.session_state.itinerary = []
+
 # -------------------------
 # Main Tabs
 # -------------------------
 tabs = st.tabs(["Overview", "Daily Plan", "Map View", "Budget Summary"])
 
+# Generate itinerary when button is clicked
 if generate_btn:
-    itinerary = generate_itinerary(destination, start_date, end_date, budget, preferences, transport)
+    with st.spinner("Generating your itinerary..."):
+        st.session_state.itinerary = generate_itinerary(destination, start_date, end_date, budget, preferences, transport)
+        st.session_state.generated = True
+
+# Display itinerary if generated
+if st.session_state.generated:
+    itinerary = st.session_state.itinerary
     total_cost = calculate_budget(itinerary)
 
     # Tab 1: Overview
@@ -134,10 +147,10 @@ if generate_btn:
         st.dataframe(df)
         st.write(f"**Total Estimated Cost:** ${total_cost}")
 
-    # Export options
-    st.download_button(
-        "📥 Download Itinerary CSV",
-        df.to_csv(index=False).encode('utf-8'),
-        file_name=f"{destination}_itinerary.csv",
-        mime="text/csv"
-    )
+        # Export CSV
+        st.download_button(
+            "📥 Download Itinerary CSV",
+            df.to_csv(index=False).encode('utf-8'),
+            file_name=f"{destination}_itinerary.csv",
+            mime="text/csv"
+        )
