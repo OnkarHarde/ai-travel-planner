@@ -16,7 +16,7 @@ le_loc = joblib.load("encoder_location.pkl")
 le_cat = joblib.load("encoder_category.pkl")
 
 # -----------------------------
-# DATA
+# LOAD DATA
 # -----------------------------
 df = pd.read_csv("cleaned_travel_data.csv").dropna()
 
@@ -26,10 +26,10 @@ df = pd.read_csv("cleaned_travel_data.csv").dropna()
 st.set_page_config(page_title="AI Travel Planner", layout="wide")
 
 st.title("🌍🧭 AI Travel Planner System")
-st.write("Smart planning using AI + filters + maps")
+st.write("Smart itinerary planning with AI + filters + map")
 
 # -----------------------------
-# CITY MAP COORDINATES
+# CITY COORDINATES
 # -----------------------------
 city_coords = {
     "Goa": [15.2993, 74.1240],
@@ -45,7 +45,7 @@ city_coords = {
 }
 
 # -----------------------------
-# SIDEBAR INPUTS (UPDATED)
+# SIDEBAR INPUTS
 # -----------------------------
 st.sidebar.header("🎛 Travel Preferences")
 
@@ -53,9 +53,8 @@ budget = st.sidebar.number_input("💰 Budget (₹)", 1000, 20000, 5000, 500)
 duration = st.sidebar.slider("📅 Duration (Days)", 1, 10, 3)
 rating = st.sidebar.slider("⭐ Minimum Rating", 3.0, 5.0, 4.0)
 
-# ✅ NEW: CATEGORY INPUT ADDED
 category_input = st.sidebar.selectbox(
-    "🏷 Preferred Category",
+    "🏷 Travel Category",
     list(le_cat.classes_)
 )
 
@@ -68,7 +67,7 @@ def compute_score(row, budget):
     return (0.5 * cost_score) + (0.5 * rating_score)
 
 # -----------------------------
-# ITINERARY
+# ITINERARY FUNCTION
 # -----------------------------
 def generate_itinerary(df, days):
     itinerary = {}
@@ -96,75 +95,81 @@ def generate_itinerary(df, days):
     return itinerary
 
 # -----------------------------
-# MAIN BUTTON
+# SESSION STATE INIT (IMPORTANT FIX)
+# -----------------------------
+if "plan" not in st.session_state:
+    st.session_state.plan = None
+
+if "itinerary" not in st.session_state:
+    st.session_state.itinerary = None
+
+# -----------------------------
+# GENERATE BUTTON
 # -----------------------------
 if st.button("🚀 Generate Travel Plan"):
 
-    try:
+    filtered = df[
+        (df["Cost"] <= budget) &
+        (df["Duration"] <= duration) &
+        (df["Rating"] >= rating) &
+        (df["Category"] == category_input)
+    ]
 
-        # -----------------------------
-        # FILTER DATA (CORE PLANNER LOGIC)
-        # -----------------------------
-        filtered = df[
-            (df["Cost"] <= budget) &
-            (df["Duration"] <= duration) &
-            (df["Rating"] >= rating) &
-            (df["Category"] == category_input)
-        ]
+    if not filtered.empty:
 
-        if filtered.empty:
-            st.warning("No matches found. Try increasing budget or duration.")
-        else:
+        filtered["Score"] = filtered.apply(lambda x: compute_score(x, budget), axis=1)
+        filtered = filtered.sort_values(by="Score", ascending=False)
 
-            # -----------------------------
-            # SCORING
-            # -----------------------------
-            filtered["Score"] = filtered.apply(lambda x: compute_score(x, budget), axis=1)
-            filtered = filtered.sort_values(by="Score", ascending=False)
+        # SAVE STATE (FIX FOR DISAPPEARING OUTPUT)
+        st.session_state.plan = filtered
+        st.session_state.itinerary = generate_itinerary(filtered, duration)
 
-            # -----------------------------
-            # UI LAYOUT
-            # -----------------------------
-            col1, col2 = st.columns(2)
+    else:
+        st.session_state.plan = None
+        st.warning("No matching travel plans found. Try increasing budget or duration.")
 
-            with col1:
-                st.subheader("🧳 Best Travel Plans")
-                st.dataframe(filtered.head(10))
+# -----------------------------
+# DISPLAY RESULTS (PERSISTENT)
+# -----------------------------
+if st.session_state.plan is not None:
 
-            with col2:
-                st.subheader("📊 Cost Distribution")
-                fig, ax = plt.subplots()
-                ax.hist(filtered["Cost"], bins=10)
-                st.pyplot(fig)
+    plan = st.session_state.plan
 
-            # -----------------------------
-            # ITINERARY
-            # -----------------------------
-            st.subheader("📅 Day-wise Itinerary")
+    col1, col2 = st.columns(2)
 
-            itinerary = generate_itinerary(filtered, duration)
+    with col1:
+        st.subheader("🧳 Top Travel Plans")
+        st.dataframe(plan.head(10))
 
-            for day, details in itinerary.items():
-                with st.expander(day):
-                    st.write(details)
+    with col2:
+        st.subheader("📊 Cost Analysis")
+        fig, ax = plt.subplots()
+        ax.hist(plan["Cost"], bins=10)
+        st.pyplot(fig)
 
-            # -----------------------------
-            # MAP
-            # -----------------------------
-            st.subheader("🗺 Travel Map")
+    # -----------------------------
+    # ITINERARY
+    # -----------------------------
+    st.subheader("📅 Day-wise Itinerary")
 
-            m = folium.Map(location=[22.9734, 78.6569], zoom_start=5)
+    for day, details in st.session_state.itinerary.items():
+        with st.expander(day):
+            st.write(details)
 
-            for _, row in filtered.head(10).iterrows():
-                city = row["Destination"]
+    # -----------------------------
+    # MAP
+    # -----------------------------
+    st.subheader("🗺 Travel Map")
 
-                if city in city_coords:
-                    folium.Marker(
-                        location=city_coords[city],
-                        popup=f"{city} | {row['Category']} | ₹{row['Cost']}"
-                    ).add_to(m)
+    m = folium.Map(location=[22.9734, 78.6569], zoom_start=5)
 
-            st_folium(m, width=900, height=500)
+    for _, row in plan.head(10).iterrows():
+        city = row["Destination"]
 
-    except Exception as e:
-        st.error(f"Error: {str(e)}")
+        if city in city_coords:
+            folium.Marker(
+                location=city_coords[city],
+                popup=f"{city} | {row['Category']} | ₹{row['Cost']}"
+            ).add_to(m)
+
+    st_folium(m, width=900, height=500)
