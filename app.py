@@ -16,29 +16,20 @@ le_loc = joblib.load("encoder_location.pkl")
 le_cat = joblib.load("encoder_category.pkl")
 
 # -----------------------------
-# LOAD DATA
+# DATA
 # -----------------------------
 df = pd.read_csv("cleaned_travel_data.csv").dropna()
 
 # -----------------------------
-# UI CONFIG
+# PAGE CONFIG
 # -----------------------------
 st.set_page_config(page_title="AI Travel Planner", layout="wide")
 
-st.title("🌍🧭 AI Travel Planner System (With Map)")
-st.write("Plan trips using AI + filters + interactive map")
+st.title("🌍🧭 AI Travel Planner System")
+st.write("Smart planning using AI + filters + maps")
 
 # -----------------------------
-# SIDEBAR INPUTS (clean UI)
-# -----------------------------
-st.sidebar.header("🎛 Your Preferences")
-
-budget = st.sidebar.number_input("💰 Budget (₹)", 1000, 20000, 5000, 500)
-duration = st.sidebar.slider("📅 Duration (Days)", 1, 10, 3)
-rating = st.sidebar.slider("⭐ Minimum Rating", 3.0, 5.0, 4.0)
-
-# -----------------------------
-# MAP COORDINATES (STATIC CITY MAPS)
+# CITY MAP COORDINATES
 # -----------------------------
 city_coords = {
     "Goa": [15.2993, 74.1240],
@@ -54,6 +45,21 @@ city_coords = {
 }
 
 # -----------------------------
+# SIDEBAR INPUTS (UPDATED)
+# -----------------------------
+st.sidebar.header("🎛 Travel Preferences")
+
+budget = st.sidebar.number_input("💰 Budget (₹)", 1000, 20000, 5000, 500)
+duration = st.sidebar.slider("📅 Duration (Days)", 1, 10, 3)
+rating = st.sidebar.slider("⭐ Minimum Rating", 3.0, 5.0, 4.0)
+
+# ✅ NEW: CATEGORY INPUT ADDED
+category_input = st.sidebar.selectbox(
+    "🏷 Preferred Category",
+    list(le_cat.classes_)
+)
+
+# -----------------------------
 # SCORING FUNCTION
 # -----------------------------
 def compute_score(row, budget):
@@ -62,7 +68,7 @@ def compute_score(row, budget):
     return (0.5 * cost_score) + (0.5 * rating_score)
 
 # -----------------------------
-# ITINERARY GENERATOR
+# ITINERARY
 # -----------------------------
 def generate_itinerary(df, days):
     itinerary = {}
@@ -95,80 +101,67 @@ def generate_itinerary(df, days):
 if st.button("🚀 Generate Travel Plan"):
 
     try:
-        # -----------------------------
-        # ML CATEGORY (NO DESTINATION INPUT NOW)
-        # -----------------------------
-        loc_enc = le_loc.transform([random.choice(le_loc.classes_)])[0]
-
-        input_data = np.array([[0, loc_enc, budget, duration, rating]])
-        pred = model.predict(input_data)[0]
-        predicted_category = le_cat.inverse_transform([pred])[0]
-
-        st.success(f"🧠 Suggested Category: {predicted_category}")
 
         # -----------------------------
-        # FILTER DATA
+        # FILTER DATA (CORE PLANNER LOGIC)
         # -----------------------------
         filtered = df[
             (df["Cost"] <= budget) &
             (df["Duration"] <= duration) &
-            (df["Rating"] >= rating)
+            (df["Rating"] >= rating) &
+            (df["Category"] == category_input)
         ]
 
-        final_plan = filtered[filtered["Category"] == predicted_category]
-
-        if final_plan.empty:
-            final_plan = filtered
-
-        if final_plan.empty:
-            st.warning("No matching trips found.")
+        if filtered.empty:
+            st.warning("No matches found. Try increasing budget or duration.")
         else:
 
             # -----------------------------
             # SCORING
             # -----------------------------
-            final_plan["Score"] = final_plan.apply(lambda x: compute_score(x, budget), axis=1)
-            final_plan = final_plan.sort_values(by="Score", ascending=False)
+            filtered["Score"] = filtered.apply(lambda x: compute_score(x, budget), axis=1)
+            filtered = filtered.sort_values(by="Score", ascending=False)
 
             # -----------------------------
-            # LAYOUT
+            # UI LAYOUT
             # -----------------------------
             col1, col2 = st.columns(2)
 
             with col1:
-                st.subheader("🧳 Top Travel Plans")
-                st.dataframe(final_plan.head(10))
+                st.subheader("🧳 Best Travel Plans")
+                st.dataframe(filtered.head(10))
 
             with col2:
                 st.subheader("📊 Cost Distribution")
                 fig, ax = plt.subplots()
-                ax.hist(final_plan["Cost"], bins=10)
+                ax.hist(filtered["Cost"], bins=10)
                 st.pyplot(fig)
 
             # -----------------------------
             # ITINERARY
             # -----------------------------
             st.subheader("📅 Day-wise Itinerary")
-            itinerary = generate_itinerary(final_plan, duration)
+
+            itinerary = generate_itinerary(filtered, duration)
 
             for day, details in itinerary.items():
                 with st.expander(day):
                     st.write(details)
 
             # -----------------------------
-            # MAP SECTION
+            # MAP
             # -----------------------------
             st.subheader("🗺 Travel Map")
 
             m = folium.Map(location=[22.9734, 78.6569], zoom_start=5)
 
-            for _, row in final_plan.head(10).iterrows():
+            for _, row in filtered.head(10).iterrows():
                 city = row["Destination"]
 
                 if city in city_coords:
                     folium.Marker(
                         location=city_coords[city],
-                        popup=f"{city} | {row['Category']} | ₹{row['Cost']}",
+                        popup=f"{city} | {row['Category']} | ₹{row['Cost']}"
                     ).add_to(m)
 
             st_folium(m, width=900, height=500)
